@@ -5,16 +5,16 @@ import matplotlib.pyplot as plt
 
 MIN_MATCH_COUNT = 10
 
-template = cv.imread('templateSNS.jpg')
-rgb0001 = cv.imread('rgb0001.jpg')
+template = cv.imread('./openCV-code/templateSNS.jpg')
+rgb0001 = cv.imread('./openCV-code/rgb0001.jpg')
 
-keyPoints = loadmat('templateSNS.mat')
+keyPoints = loadmat('./openCV-code/templateSNS.mat')
 
 templateDes = np.array(keyPoints['d']).transpose()
 templateKp = np.array(keyPoints['p']).transpose()
 templateKp = np.array(list(map(lambda kp :cv.KeyPoint(kp[0], kp[1], 1), templateKp)))
 
-keyPoints = loadmat('rgb0001.mat')
+keyPoints = loadmat('./openCV-code/rgb0001.mat')
 
 rgb0001Des = np.array(keyPoints['d']).transpose()
 rgb0001Kp = np.array(keyPoints['p']).transpose()
