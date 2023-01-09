@@ -1,16 +1,46 @@
-
 import numpy as np
+import sys
+from scipy.io import loadmat, savemat
+from scipy.spatial.distance import cdist
 import cv2 as cv
 from matplotlib import pyplot as plt
-from matcing import matching
-
-
 
 BLUE = (255, 0, 0)
 GREEN = (0, 255, 0)
 RED = (0, 0, 255)
-THRESHOLD = 0.9
-NUM_ITERS = 1000
+THRESHOLD = 1
+NUM_ITERS = 100
+
+class Match:
+    pos1: int
+    pos2: int
+    dist: float
+
+    def __init__(self, pos1, pos2, dist):
+        self.pos1 = pos1
+        self.pos2 = pos2
+        self.dist = dist
+    
+    def update(self, pos2, dist):
+        self.pos2 = pos2
+        self.dist = dist
+
+    def __str__(self):
+        return f"position 1: {self.pos1}, position 2: {self.pos2}, distance: {self.dist}"
+
+
+def matching(des1, des2, verbose=True):
+    dists = cdist(des1, des2, 'euclidean')
+    matches = np.zeros(len(des1), dtype=Match)
+    if verbose:
+        print(f'Fiding the best match for {len(des1)} descriptors to target {len(des2)} descriptors...')
+    for i in range(len(des1)):
+        argmin = np.argmin(dists[i])
+        matches[i] = Match(i, argmin, dists[i][argmin])
+        if verbose:
+            print(f'\x1b[2K\r└──> iteration {i + 1} / {len(des1)}', end='')
+    if verbose: print('\n')
+    return matches
 #
 #
 #
@@ -62,7 +92,7 @@ def RANSAC(point_map, threshold=THRESHOLD, verbose=True):
 
 
         inliers = {(c[0], c[1], c[2], c[3])
-                   for c in point_map if dist(c, H) < 500}
+                   for c in point_map if dist(c, H) < 5}
 
 
         if verbose:
@@ -82,9 +112,6 @@ def RANSAC(point_map, threshold=THRESHOLD, verbose=True):
         print(f'Min inliers: {len(point_map) * threshold}')
 
     return homography, bestInliers
-
-
-
 #
 #
 #
@@ -114,7 +141,7 @@ def dist(point_map, H):
 #
 #
 #
-def drawMatches(image1, image2, point_map, inliers=None, max_points=50):
+def drawMatches(image1, image2, point_map, inliers=None, max_points=300):
     """
     inliers: set of (x1, y1) points
     """
@@ -150,56 +177,30 @@ def drawMatches(image1, image2, point_map, inliers=None, max_points=50):
 
 #
 #
+if __name__ == "__main__":
+    args = sys.argv
+    # template_dir = args[1]
+    # input_dir = args[2]
+    # output_dir = args[3]
 
-img1 = cv.imread('./receitaSNS/templateSNS.jpg',0)          # queryImage
-img2 = cv.imread('./receitaSNS/rgb0001.jpg',0)              # trainImage
-# Initiate SIFT detector
-sift = cv.SIFT_create()
-# find the keypoints and descriptors with SIFT
-kp1, des1 = sift.detectAndCompute(img1,None)
-kp2, des2 = sift.detectAndCompute(img2,None)
-matches = matching(des1, des2)
+    keyPoints = loadmat('./template/features.mat')
+    templateDes = np.array(keyPoints['d']).transpose()
+    templateKp = np.array(keyPoints['p']).transpose()
+    #templateKp = np.array(list(map(lambda kp :cv.KeyPoint(kp[0], kp[1], 1), templateKp)))
 
-pts_cor = np.array([[kp1[m.queryIdx].pt[0], kp1[m.queryIdx].pt[1], kp2[m.trainIdx].pt[0], kp2[m.trainIdx].pt[1]] for m in matches])
-src_pts = np.float32([ kp1[m.queryIdx].pt for m in matches]).reshape(-1,1,2)
-dst_pts = np.float32([ kp2[m.trainIdx].pt for m in matches ]).reshape(-1,1,2)
+    keyPoints = loadmat('./input/rgb0001.mat')
+    rgb0001Des = np.array(keyPoints['d']).transpose()
+    rgb0001Kp = np.array(keyPoints['p']).transpose()
+    #rgb0001Kp = np.array(list(map(lambda kp :cv.KeyPoint(kp[0], kp[1], 1), rgb0001Kp)))
 
-H, inliers = RANSAC(pts_cor)
+    #matches = matching(rgb0001Des, templateDes)
+    #matches = matching(templateDes, rgb0001Des)
+    bf = cv.BFMatcher()
+    matches = bf.match(templateDes, rgb0001Des)
+    # Apply ratio test
+    #pts_cor = np.array([[templateKp[m.pos1][0], templateKp[m.pos1][1], rgb0001Kp[m.pos2][0], rgb0001Kp[m.pos2][1]] for m in matches])
+    pts_cor = np.array([[templateKp[m.queryIdx][0], templateKp[m.queryIdx][1], rgb0001Kp[m.trainIdx][0], rgb0001Kp[m.trainIdx][1]] for m in matches])
+    
 
-matchesMask = []
-outlier = 1
-#
-#
-#
-
-#
-#
-#
-jo = 1
-""" __________________________ This for loop is used to get the equivalent variable of matches in cv.findHomography 
-    __________________________ But a drawing method has been implemented that requires inliers instead of matches 
-for cord in pts_cor:
-    outlier = 1
-    cord_i = cord.astype(int)
-
-    for eq in inliers:
-        eq = np.asarray(eq)
-        eq_i = eq.astype(int)
-
-        if (np.array_equal(eq_i, cord_i)):
-            outlier = 0
-            break
-
-
-
-    matchesMask.append(outlier)
-
-"""
-h,w = img1.shape
-pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
-dst = cv.perspectiveTransform(pts,H)
-img2 = cv.polylines(img2,[np.int32(dst)],True,255,3, cv.LINE_AA)
-
-img3 = drawMatches(img1, img2, pts_cor, inliers)
-plt.imshow(img3, 'gray')
-plt.show()
+    H, inliers = RANSAC(pts_cor)
+    savemat('./output/H_0001.mat', {'H':H})
